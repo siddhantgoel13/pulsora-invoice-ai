@@ -8,13 +8,9 @@ from .models import InvoiceData
 
 
 SYSTEM_PROMPT = """
-You are an expert utility-bill document extraction system.
+You extract structured data from utility invoices.
 
-Extract ONLY the fields in the JSON schema below. Use BOTH:
-1) the invoice page image(s), which are the primary source for layout and label/value relationships, and
-2) the extracted PDF text, which is supporting evidence.
-
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this schema:
 {
   "vendor_name": string|null,
   "invoice_date": "YYYY-MM-DD"|null,
@@ -27,42 +23,50 @@ Return ONLY valid JSON:
   "confidence": number
 }
 
-CRITICAL DATE RULES
-- "invoice_date" means the date the bill/invoice was issued, printed, generated, or explicitly labelled Bill Date / Invoice Date / Issue Date.
-- NEVER use Due Date, Payment Due Date, Pay By Date, Disconnect Date, Mailing Date, Meter Reading Date, or a billing-period date as invoice_date.
-- If a document has only a Due Date and no invoice/bill/issue date, return invoice_date=null.
-- Read the label immediately associated with the date before selecting it.
-- When text extraction and the image disagree, prefer the value visibly associated with the correct label in the image.
-- Do not infer an invoice date from a due date by subtracting a typical number of days.
+GENERAL RULES:
+- Never invent information. Use null when a field cannot be established.
+- Use BOTH the invoice image/layout and extracted PDF text as evidence when both are provided.
 - Normalize dates to YYYY-MM-DD.
-
-CRITICAL USAGE RULES
-- usage_amount means actual utility consumption/amount used during the billing period.
-- It is NOT the number of billing days.
-- It is NOT a meter reading.
-- It is NOT a rate, price, charge, tax, balance, account number, or invoice number.
-- Look for labels such as Usage, Amount Used, Consumption, Energy Used, Units Used, Usage History, kWh Used, Therms Used, SCM Used, gallons used, etc.
-- For a table, keep the number in the same row/column as the utility service and the usage/consumption label.
-- If a bill shows previous and present meter readings, do not use either reading as usage unless the invoice explicitly labels a calculated value as usage/consumption.
-- If the only visible number is billing days, return usage_amount=null rather than treating days as usage.
-- Keep the actual consumption unit, e.g. kWh, SCM, m3, therms, gallons.
-
-BILLING PERIOD
-- billing_period_start/end are the dates for which the consumption is billed.
-- Do not use due date as either billing-period date.
-- For a "From ... To ..." service period, use those dates.
-- If the bill clearly gives a consumption/billing period elsewhere, use that period.
-
-GENERAL RULES
-- Never invent information.
-- Use null when a field cannot be established confidently.
-- Read invoices in their original language; understand equivalent labels in other languages.
-- service_address should be the customer/service location, not the utility company's mailing address.
 - utility_type must be electricity, gas, or water when it can be established.
+- usage_amount must represent ACTUAL UTILITY CONSUMPTION, not money, a meter reading,
+  a rate, tax, account number, invoice number, or number of billing days.
+- Keep the actual consumption unit, e.g. kWh, SCM, m3, gallons.
+- billing_period_start/end refer to the period for which the consumption is billed.
 - confidence must be between 0 and 1.
-- Give lower confidence when a required field is ambiguous.
-- Before producing JSON, internally cross-check every date and usage value against its visible label.
+- If a value is unreadable or absent, return null rather than guessing.
+
+INVOICE DATE RULES:
+- invoice_date must come from a field explicitly labelled Invoice Date, Bill Date,
+  Issue Date, Statement Date, or an equivalent label.
+- NEVER use Due Date, Payment Due Date, Amount Due Date, Disconnect Date,
+  meter-reading date, or billing-period dates as invoice_date.
+- If there are several dates, use the date attached to the invoice/bill/issue label,
+  using the visual position on the page to determine the label-value relationship.
+
+USAGE RULES — IMPORTANT:
+- Identify the number that represents actual consumption/usage.
+- NEVER interpret "No. of days", "Days", "Billing days", or similar as usage.
+- NEVER use opening/previous/closing/current meter readings as usage.
+- NEVER use a monetary charge or rate as usage.
+- Look specifically for labels such as Consumption, Cons., Usage, Energy Used,
+  Amount Used, Units Used, Quantity Consumed, or equivalent local-language labels.
+- If the invoice contains MULTIPLE CONSUMPTION PERIODS/ROWS, calculate total billed
+  consumption by adding the consumption value from each relevant period.
+- Example: if one period shows consumption 20.316 SCM and another shows 2.684 SCM,
+  usage_amount must be 23.000 SCM. A separate "No. of days = 53" value must NOT be used.
+- If multiple rows are meter adjustments, estimates, reversals, or non-consumption
+  charges, do not blindly sum them. Use the values explicitly identified as
+  consumption/usage.
+- Use the unit associated with the consumption values.
+- When the visual layout and extracted text disagree, prefer the value whose label
+  and table position clearly identify it as consumption.
+
+BILLING PERIOD RULES:
+- Use the actual service/consumption period, not the invoice date or due date.
+- If multiple consecutive consumption periods form one billed period, use the earliest
+  consumption-period start and latest consumption-period end.
 """
+
 
 def _image_data_url(image_bytes: bytes) -> str:
     encoded = base64.b64encode(image_bytes).decode("utf-8")
@@ -79,27 +83,24 @@ def parse_invoice(text: str, page_images: list[bytes] | None = None) -> InvoiceD
     model = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
     client = OpenAI(api_key=api_key)
 
-    # Always use the invoice image when available. Text extraction alone can
-    # lose the visual relationship between a label and its value (especially
-    # for dates, usage, meter readings and billing days).
-    images = (page_images or [])[:12]
-
-    text_section = text.strip() if text.strip() else "(No selectable PDF text was available.)"
-
+    # Always provide the invoice image when available. Text extraction alone can
+    # destroy the spatial relationship between labels and values in invoice tables.
     user_content = [
         {
             "type": "text",
             "text": (
                 "Extract the required fields from this utility invoice. "
-                "The page image is the primary source; extracted text is supporting evidence. "
-                "Do not guess. In particular, distinguish invoice/bill date from due date, "
-                "and actual utility consumption from billing days and meter readings.\n\n"
-                "EXTRACTED PDF TEXT:\n"
-                f"{text_section}"
+                "Use the invoice image/layout as the primary evidence for associating "
+                "labels with values, and use extracted PDF text as supporting evidence.\n\n"
+                "IMPORTANT: Carefully inspect any consumption table. If there are multiple "
+                "consumption periods, add the actual consumption values across those periods. "
+                "Do NOT use a 'No. of days' value as usage.\n\n"
+                f"EXTRACTED PDF TEXT:\n{text.strip() if text.strip() else '[No selectable text]'}"
             ),
         }
     ]
 
+    images = (page_images or [])[:12]
     for image in images:
         user_content.append(
             {
@@ -109,15 +110,6 @@ def parse_invoice(text: str, page_images: list[bytes] | None = None) -> InvoiceD
                     "detail": "high",
                 },
             }
-        )
-
-    # If page images are unexpectedly unavailable, retain a text-only fallback.
-    if not images:
-        user_content = (
-            "Extract the required fields from this utility invoice text. "
-            "Use the date/usage rules in the system prompt and return null when "
-            "the evidence is insufficient.\n\n"
-            f"{text_section}"
         )
 
     response = client.chat.completions.create(
