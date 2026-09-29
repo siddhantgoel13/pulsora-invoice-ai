@@ -1,9 +1,23 @@
+import base64
 import json
 from typing import Any
 
 from openai import OpenAI
 
 from .models import InvoiceData
+
+
+def _image_to_data_url(image: bytes | str) -> str:
+    """Convert rendered PDF page bytes into an OpenAI-compatible image URL."""
+    if isinstance(image, str):
+        # Already a URL/data URL; leave it unchanged.
+        return image
+
+    if not isinstance(image, (bytes, bytearray)):
+        raise TypeError(f"Unsupported page image type: {type(image).__name__}")
+
+    encoded = base64.b64encode(bytes(image)).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"
 
 
 def _build_prompt(text: str) -> str:
@@ -117,31 +131,45 @@ def _normalise(result: dict[str, Any]) -> InvoiceData:
     return InvoiceData(**fields)
 
 
+def _build_multimodal_content(text: str, page_images: list[bytes | str] | None):
+    content: list[dict[str, Any]] = [
+        {"type": "text", "text": text}
+    ]
+
+    for image in (page_images or []):
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": _image_to_data_url(image),
+                "detail": "high",
+            },
+        })
+
+    return content
+
+
 def parse_invoice(
     text: str,
-    page_images: list[str] | None = None,
+    page_images: list[bytes | str] | None = None,
     client: OpenAI | None = None,
 ) -> InvoiceData:
     """
     Extract invoice fields using text + rendered invoice images.
 
-    V5 specifically handles invoices where consumption is split across
-    multiple usage periods, such as the IGL invoice with 20.316 + 2.684 SCM.
+    V5.1 fixes the V5 image-input serialization error:
+    PDF page images are bytes internally, but OpenAI image_url requires a
+    string URL/data URL. Images are therefore base64 encoded before sending.
+
+    It also retains the V5 consumption logic for invoices containing multiple
+    additive usage periods.
     """
     if client is None:
         client = OpenAI()
 
-    content: list[dict[str, Any]] = [
-        {"type": "text", "text": _build_prompt(text)}
-    ]
-
-    # Always provide images when available. Visual layout is critical for
-    # distinguishing labels such as Due Date, No. of Days and Consumption.
-    for image in (page_images or []):
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": image, "detail": "high"},
-        })
+    content = _build_multimodal_content(
+        _build_prompt(text),
+        page_images,
+    )
 
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -162,14 +190,10 @@ def parse_invoice(
     first_pass = json.loads(response.choices[0].message.content)
 
     # Second pass: challenge the extraction using the same invoice evidence.
-    audit_content: list[dict[str, Any]] = [
-        {"type": "text", "text": _audit_prompt(first_pass)}
-    ]
-    for image in (page_images or []):
-        audit_content.append({
-            "type": "image_url",
-            "image_url": {"url": image, "detail": "high"},
-        })
+    audit_content = _build_multimodal_content(
+        _audit_prompt(first_pass),
+        page_images,
+    )
 
     audit_response = client.chat.completions.create(
         model="gpt-4o",
