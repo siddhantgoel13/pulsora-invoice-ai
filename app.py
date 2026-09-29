@@ -44,7 +44,7 @@ st.markdown(
 }
 
 .block-container {
-    padding-top: 2rem;
+    padding-top: 3.25rem;
     padding-bottom: 3rem;
     max-width: 1540px;
 }
@@ -128,13 +128,13 @@ section[data-testid="stSidebar"] * {
 /* ---------- Hero ---------- */
 .hero {
     position: relative;
-    overflow: hidden;
-    padding: 0.45rem 0 1.15rem;
+    overflow: visible;
+    padding: 0.15rem 0 1.15rem;
 }
 
 .hero-title {
     font-size: clamp(2.15rem, 3.6vw, 3.2rem);
-    line-height: 1.04;
+    line-height: 1.15;
     font-weight: 850;
     letter-spacing: -0.045em;
     color: var(--navy) !important;
@@ -235,14 +235,22 @@ section[data-testid="stSidebar"] * {
 .stButton > button[kind="primary"] {
     background: linear-gradient(90deg, #1677e8, #1769d2) !important;
     border: 0 !important;
-    color: white !important;
+    color: #ffffff !important;
     box-shadow: 0 6px 18px rgba(22,119,232,.22);
 }
 
-.stDownloadButton > button {
+.stButton > button[kind="primary"] *,
+.stDownloadButton > button *,
+.stDownloadButton > button[kind="primary"] * {
+    color: #ffffff !important;
+    font-weight: 850 !important;
+}
+
+.stDownloadButton > button,
+.stDownloadButton > button[kind="primary"] {
     background: linear-gradient(90deg, #168447, #20a05a) !important;
     border: 0 !important;
-    color: white !important;
+    color: #ffffff !important;
     box-shadow: 0 6px 18px rgba(22,132,71,.18);
 }
 
