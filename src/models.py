@@ -20,6 +20,7 @@ class InvoiceData(BaseModel):
     def normalize_utility_type(cls, value):
         if value is None:
             return value
+
         v = value.strip().lower()
         aliases = {
             "electric": "electricity",

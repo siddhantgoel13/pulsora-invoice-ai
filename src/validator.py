@@ -9,14 +9,12 @@ def validate_invoice(data: InvoiceData):
 
     if data.invoice_date is None:
         warnings.append(
-            "Invoice/bill date could not be confidently identified. "
-            "Due date must not be used as invoice date."
+            "Invoice date could not be established from an explicit invoice/bill/issue date."
         )
 
     if data.usage_amount is None:
         warnings.append(
-            "Utility consumption could not be confidently identified. "
-            "Billing days and meter readings must not be used as usage."
+            "Utility consumption could not be established confidently; manual review required."
         )
 
     if data.usage_amount is not None and data.usage_amount < 0:
@@ -28,6 +26,12 @@ def validate_invoice(data: InvoiceData):
     if data.billing_period_start and data.billing_period_end:
         if data.billing_period_start > data.billing_period_end:
             warnings.append("Billing period start is after billing period end.")
+
+    if data.invoice_date and data.billing_period_start:
+        if data.billing_period_start > data.invoice_date:
+            warnings.append(
+                "Billing period starts after the invoice date; review the extracted dates."
+            )
 
     if data.confidence is not None:
         if data.confidence < 0.70:

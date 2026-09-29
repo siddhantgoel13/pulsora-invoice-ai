@@ -14,16 +14,17 @@ class ExtractedPDF:
 
 def extract_text_and_pages(pdf_bytes: bytes) -> ExtractedPDF:
     """
-    Extract selectable PDF text first. If the PDF is scanned/image-only,
-    also render each page so the LLM can inspect the invoice visually.
+    Extract selectable PDF text and render every page.
+
+    Both representations are returned because utility invoices frequently
+    contain tables where plain text extraction loses the relationship between
+    a label and its value.
     """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
     page_texts = [page.get_text("text") for page in doc]
     text = "\n\n--- PAGE BREAK ---\n\n".join(page_texts).strip()
 
-    # Always render pages so we can support image-only/scanned PDFs.
-    # Keep resolution moderate for cloud deployment and API payload size.
     page_images = []
     for page in doc:
         pix = page.get_pixmap(matrix=fitz.Matrix(1.35, 1.35), alpha=False)
