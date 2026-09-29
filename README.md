@@ -201,6 +201,7 @@ pulsora-invoice-ai/
 │   ├── models.py
 │   └── validator.py
 ├── tests/
+│   └── test_validation.py
 ├── app.py
 ├── requirements.txt
 └── README.md
@@ -305,6 +306,98 @@ for the extraction/validation components.
 
 The final validation dataset in `invoices/` is also used as an
 end-to-end smoke test for the deployed application.
+
+## Testing Approach
+
+Pulsora was validated using a combination of automated unit tests, manual field-level comparison against real invoices, and end-to-end smoke testing of the deployed Streamlit application.
+
+### 1. Extraction Accuracy Validation
+
+The final validation dataset contains utility invoices covering different providers, utility types, countries, languages, layouts, and document formats.
+
+For the final validation run, extracted values were compared against the source invoices, with particular attention to:
+
+- Vendor / utility provider
+- Invoice date
+- Service address
+- Utility type
+- Usage amount
+- Usage unit
+- Billing period start and end
+- Confidence and validation status
+
+Special attention was given to common invoice-extraction failure modes, including:
+
+- Invoice date vs. due date
+- Billing-period days vs. actual consumption
+- Meter readings vs. consumption
+- Monetary charges/rates vs. physical usage
+- Different date formats
+- Different decimal/number formats
+- Missing or ambiguous fields
+- Different utility units
+- Multilingual labels and layouts
+
+Where the invoice did not provide sufficient evidence for a field, the application is designed to return `null` and/or flag the record for review rather than inventing a value.
+
+### 2. Test Cases and Edge Cases
+
+The validation process included:
+
+- Electricity invoices
+- Gas invoices
+- Water invoices
+- PDF documents
+- JPG/image documents
+- English, French, and Spanish invoice content
+- Different invoice layouts
+- Different date and number formats
+- Missing usage units
+- Invalid billing-period ordering
+- Low-confidence extraction
+- Utility-type aliases
+- Multiple invoices processed in a single run
+
+A Spanish electricity invoice was also used as an edge case for distinguishing a monetary consumption-cost statement from actual physical utility consumption.
+
+### 3. Automated Tests
+
+The repository contains `tests/test_validation.py` with five focused validation tests covering:
+
+1. Utility-type alias normalization (`Electric` → `electricity`)
+2. Valid billing-period handling
+3. Invalid billing-period detection
+4. Low-confidence extraction warnings
+5. Missing usage-unit warnings
+
+The tests focus on deterministic validation and normalization behavior rather than making live LLM/API calls, which keeps them repeatable and avoids depending on external services.
+
+### 4. End-to-End Testing
+
+The final invoice dataset was processed through the deployed application to verify the complete workflow:
+
+1. Upload invoice files
+2. Process invoices
+3. Extract structured fields
+4. Run validation
+5. Display confidence and review status
+6. Review multiple invoice results
+7. Generate and download the consolidated CSV
+8. Compare the final output with the source invoices
+
+### 5. Future Testing Improvements
+
+With additional development time, testing could be expanded with:
+
+- A larger labelled "golden" invoice dataset
+- Automated field-level accuracy metrics
+- Regression tests against every previously validated invoice
+- Automated tests for multilingual extraction
+- More image-quality and scanned-document cases
+- OCR-specific testing for low-quality documents
+- Automated UI/end-to-end browser tests
+- Performance testing for larger invoice batches
+- Additional utility-unit and provider-specific test cases
 
 ## Current Scope
 
