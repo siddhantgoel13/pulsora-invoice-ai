@@ -116,11 +116,13 @@ if process:
                 st.write("Extracting PDF text...")
                 extracted = extract_text_and_pages(raw)
 
-                if not extracted.text.strip():
-                    raise ValueError("No selectable text was found in this PDF.")
+                if extracted.text.strip():
+                    st.write("Selectable text detected — using text extraction.")
+                else:
+                    st.write("Scanned/image-only PDF detected — using visual AI extraction.")
 
                 st.write("Sending structured extraction request to the LLM...")
-                data = parse_invoice(extracted.text)
+                data = parse_invoice(extracted.text, extracted.page_images)
 
                 st.write("Validating extracted fields...")
                 validated, warnings = validate_invoice(data)
