@@ -44,7 +44,7 @@ st.markdown(
 }
 
 .block-container {
-    padding-top: 2rem;
+    padding-top: 3.25rem;
     padding-bottom: 3rem;
     max-width: 1540px;
 }
@@ -133,8 +133,8 @@ section[data-testid="stSidebar"] * {
 }
 
 .hero-title {
-    font-size: clamp(2.25rem, 4vw, 3.45rem);
-    line-height: 1.04;
+    font-size: clamp(2.1rem, 3.6vw, 3.15rem);
+    line-height: 1.08;
     font-weight: 850;
     letter-spacing: -0.045em;
     color: var(--navy) !important;
@@ -235,14 +235,22 @@ section[data-testid="stSidebar"] * {
 .stButton > button[kind="primary"] {
     background: linear-gradient(90deg, #1677e8, #1769d2) !important;
     border: 0 !important;
-    color: white !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
     box-shadow: 0 6px 18px rgba(22,119,232,.22);
+}
+
+.stButton > button[kind="primary"] *,
+.stDownloadButton > button * {
+    color: #ffffff !important;
+    font-weight: 800 !important;
 }
 
 .stDownloadButton > button {
     background: linear-gradient(90deg, #168447, #20a05a) !important;
     border: 0 !important;
-    color: white !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
     box-shadow: 0 6px 18px rgba(22,132,71,.18);
 }
 
