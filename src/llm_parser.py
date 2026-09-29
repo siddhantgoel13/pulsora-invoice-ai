@@ -8,14 +8,13 @@ from .models import InvoiceData
 
 
 SYSTEM_PROMPT = """
-You are a high-accuracy utility-invoice data extraction engine.
+You are an expert utility-bill document extraction system.
 
-Your job is to extract ONLY information that is explicitly supported by the
-invoice. Utility invoices contain many dates, numbers, readings, charges,
-payment dates and other values that look similar. You must identify each
-requested field by its LABEL and SEMANTIC CONTEXT, not by position alone.
+Extract ONLY the fields in the JSON schema below. Use BOTH:
+1) the invoice page image(s), which are the primary source for layout and label/value relationships, and
+2) the extracted PDF text, which is supporting evidence.
 
-Return ONLY valid JSON matching this schema:
+Return ONLY valid JSON:
 {
   "vendor_name": string|null,
   "invoice_date": "YYYY-MM-DD"|null,
@@ -28,85 +27,42 @@ Return ONLY valid JSON matching this schema:
   "confidence": number
 }
 
-GENERAL RULES
-1. Never guess. If a field cannot be established confidently, return null.
-2. Prefer an explicitly labelled value over an inferred value.
-3. Read the invoice in its original language. Understand equivalent labels in
-   other languages.
-4. Normalize dates to YYYY-MM-DD.
-5. confidence must be between 0 and 1 and should reflect the reliability of
-   the extracted fields, not simply whether a value was found.
+CRITICAL DATE RULES
+- "invoice_date" means the date the bill/invoice was issued, printed, generated, or explicitly labelled Bill Date / Invoice Date / Issue Date.
+- NEVER use Due Date, Payment Due Date, Pay By Date, Disconnect Date, Mailing Date, Meter Reading Date, or a billing-period date as invoice_date.
+- If a document has only a Due Date and no invoice/bill/issue date, return invoice_date=null.
+- Read the label immediately associated with the date before selecting it.
+- When text extraction and the image disagree, prefer the value visibly associated with the correct label in the image.
+- Do not infer an invoice date from a due date by subtracting a typical number of days.
+- Normalize dates to YYYY-MM-DD.
 
-INVOICE DATE — VERY IMPORTANT
-- Extract the date explicitly identified as the invoice/bill/statement date.
-- Accept labels such as Invoice Date, Bill Date, Billing Date, Statement Date,
-  Date of Invoice, Date Issued, Issue Date and their equivalents in other
-  languages.
-- DO NOT use Payment Due Date, Due Date, Pay By Date, Amount Due By date,
-  disconnect date, meter-reading date, service-period dates, or other dates
-  merely because they are prominent.
-- If there is no explicit invoice/bill/statement/issue date, return null.
-- If several candidate dates exist and the document does not make their
-  meaning clear, return null rather than guessing.
+CRITICAL USAGE RULES
+- usage_amount means actual utility consumption/amount used during the billing period.
+- It is NOT the number of billing days.
+- It is NOT a meter reading.
+- It is NOT a rate, price, charge, tax, balance, account number, or invoice number.
+- Look for labels such as Usage, Amount Used, Consumption, Energy Used, Units Used, Usage History, kWh Used, Therms Used, SCM Used, gallons used, etc.
+- For a table, keep the number in the same row/column as the utility service and the usage/consumption label.
+- If a bill shows previous and present meter readings, do not use either reading as usage unless the invoice explicitly labels a calculated value as usage/consumption.
+- If the only visible number is billing days, return usage_amount=null rather than treating days as usage.
+- Keep the actual consumption unit, e.g. kWh, SCM, m3, therms, gallons.
 
 BILLING PERIOD
-- billing_period_start/end must describe the period for which utility
-  consumption is billed.
-- Look for labels such as Billing Period, Service Period, From/To,
-  Consumption Period, Period From/To and equivalents.
-- DO NOT use invoice date or due date as a billing-period boundary unless the
-  invoice explicitly labels it that way.
-- A number of billing days is NOT a date and must never be used as either
-  billing_period_start or billing_period_end.
+- billing_period_start/end are the dates for which the consumption is billed.
+- Do not use due date as either billing-period date.
+- For a "From ... To ..." service period, use those dates.
+- If the bill clearly gives a consumption/billing period elsewhere, use that period.
 
-USAGE AMOUNT — VERY IMPORTANT
-- usage_amount means the quantity of utility actually consumed/billed.
-- Look for labels such as Usage, Consumption, Amount Used, Energy Used,
-  Units Used, Volume Used, Total Consumption and equivalents.
-- The number must be associated with the consumption/usage concept.
-- DO NOT use:
-  * number of billing/service days
-  * account number
-  * invoice number
-  * meter number
-  * previous meter reading
-  * current/present meter reading
-  * rate/tariff
-  * unit price
-  * tax
-  * subtotal
-  * total bill amount
-  * amount due
-  * payment amount
-- If only meter readings are present and actual consumption is not stated or
-  cannot be calculated reliably, return null.
-- A value such as "28 days" is NOT usage.
-- For gas, examples of consumption units include SCM, m3, therms.
-- For electricity, examples include kWh.
-- For water, examples include gallons, m3, KL.
-- usage_unit must be the unit attached to the consumption value.
-
-UTILITY TYPE
-- Must be electricity, gas, or water when clearly established.
-- Infer from the utility service/vendor only when the evidence is strong.
-
-SERVICE ADDRESS
-- Extract the customer/service location if explicitly present.
-- Do not substitute the utility company's mailing address.
-
-MULTIPLE VALUES
-- When several similar values appear, select the one whose label and context
-  match the requested field.
-- If the visual layout is clearer than the extracted text, trust the visual
-  invoice evidence.
-- Never select a value solely because it is the first, largest, newest, or
-  most prominent number/date.
-
-MISSING OR AMBIGUOUS DATA
-- null is preferred to an incorrect value.
-- An uncertain extraction should reduce confidence.
+GENERAL RULES
+- Never invent information.
+- Use null when a field cannot be established confidently.
+- Read invoices in their original language; understand equivalent labels in other languages.
+- service_address should be the customer/service location, not the utility company's mailing address.
+- utility_type must be electricity, gas, or water when it can be established.
+- confidence must be between 0 and 1.
+- Give lower confidence when a required field is ambiguous.
+- Before producing JSON, internally cross-check every date and usage value against its visible label.
 """
-
 
 def _image_data_url(image_bytes: bytes) -> str:
     encoded = base64.b64encode(image_bytes).decode("utf-8")
@@ -123,50 +79,45 @@ def parse_invoice(text: str, page_images: list[bytes] | None = None) -> InvoiceD
     model = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
     client = OpenAI(api_key=api_key)
 
-    # Use BOTH extracted text and page images whenever images are available.
-    # Text is useful for exact characters; the rendered page preserves the
-    # visual relationship between labels and values, which is critical for
-    # distinguishing invoice date/due date and usage/days/meter readings.
-    images = (page_images or [])[:8]
+    # Always use the invoice image when available. Text extraction alone can
+    # lose the visual relationship between a label and its value (especially
+    # for dates, usage, meter readings and billing days).
+    images = (page_images or [])[:12]
 
-    if images:
-        user_content = [
+    text_section = text.strip() if text.strip() else "(No selectable PDF text was available.)"
+
+    user_content = [
+        {
+            "type": "text",
+            "text": (
+                "Extract the required fields from this utility invoice. "
+                "The page image is the primary source; extracted text is supporting evidence. "
+                "Do not guess. In particular, distinguish invoice/bill date from due date, "
+                "and actual utility consumption from billing days and meter readings.\n\n"
+                "EXTRACTED PDF TEXT:\n"
+                f"{text_section}"
+            ),
+        }
+    ]
+
+    for image in images:
+        user_content.append(
             {
-                "type": "text",
-                "text": (
-                    "Extract the required fields from this utility invoice.\n\n"
-                    "IMPORTANT: Use the rendered invoice page(s) as the primary "
-                    "source for label/value relationships. The extracted text "
-                    "below is supplementary and may have lost the original "
-                    "layout. When text and visual layout conflict, use the "
-                    "visual invoice evidence.\n\n"
-                    "Before returning each value, identify the label/context "
-                    "that proves it represents the requested field. Do not "
-                    "substitute a due date for an invoice date or billing days "
-                    "for utility consumption. Return null when the evidence "
-                    "does not establish the field.\n\n"
-                    "EXTRACTED PDF TEXT:\n"
-                    f"{text if text.strip() else '[No selectable text]'}"
-                ),
+                "type": "image_url",
+                "image_url": {
+                    "url": _image_data_url(image),
+                    "detail": "high",
+                },
             }
-        ]
+        )
 
-        for image in images:
-            user_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": _image_data_url(image),
-                        "detail": "high",
-                    },
-                }
-            )
-    else:
+    # If page images are unexpectedly unavailable, retain a text-only fallback.
+    if not images:
         user_content = (
             "Extract the required fields from this utility invoice text. "
-            "Use the field-specific rules in the system prompt. "
-            "Use null when the evidence is insufficient.\n\n"
-            f"{text}"
+            "Use the date/usage rules in the system prompt and return null when "
+            "the evidence is insufficient.\n\n"
+            f"{text_section}"
         )
 
     response = client.chat.completions.create(

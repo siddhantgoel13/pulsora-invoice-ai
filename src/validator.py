@@ -8,10 +8,16 @@ def validate_invoice(data: InvoiceData):
         warnings.append(f"Unexpected utility type: {data.utility_type}")
 
     if data.invoice_date is None:
-        warnings.append("Invoice date was not confidently identified; manual review recommended.")
+        warnings.append(
+            "Invoice/bill date could not be confidently identified. "
+            "Due date must not be used as invoice date."
+        )
 
     if data.usage_amount is None:
-        warnings.append("Utility consumption was not confidently identified; manual review recommended.")
+        warnings.append(
+            "Utility consumption could not be confidently identified. "
+            "Billing days and meter readings must not be used as usage."
+        )
 
     if data.usage_amount is not None and data.usage_amount < 0:
         warnings.append("Usage amount is negative.")
@@ -22,12 +28,6 @@ def validate_invoice(data: InvoiceData):
     if data.billing_period_start and data.billing_period_end:
         if data.billing_period_start > data.billing_period_end:
             warnings.append("Billing period start is after billing period end.")
-
-    if data.billing_period_start and data.invoice_date:
-        if data.billing_period_start > data.invoice_date:
-            warnings.append(
-                "Billing period starts after the invoice date; review the extracted dates."
-            )
 
     if data.confidence is not None:
         if data.confidence < 0.70:
