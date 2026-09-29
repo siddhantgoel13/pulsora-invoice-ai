@@ -20,19 +20,19 @@ st.set_page_config(
 # ---------- Styling ----------
 st.markdown("""
 <style>
-    .block-container { padding-top: 1.6rem; padding-bottom: 2rem; }
-    .hero-title { font-size: 2.25rem; font-weight: 750; color: #15153a; margin-bottom: .15rem; }
-    .hero-sub { color: #5d6280; font-size: 1.05rem; margin-bottom: 1.2rem; }
-    .step {
-        border-radius: 12px; padding: .8rem 1rem; background: #f7f7ff;
-        border: 1px solid #e7e7fb; text-align: center;
-    }
-    .upload-box {
-        border: 1.5px dashed #8d7cff; border-radius: 14px; padding: 1.4rem;
-        background: #fcfbff;
-    }
-    .small-muted { color: #747991; font-size: .88rem; }
-    div[data-testid="stMetric"] { border: 1px solid #ececf5; padding: 12px; border-radius: 12px; }
+    .block-container { padding-top: 1.5rem; padding-bottom: 2.5rem; max-width: 1500px; }
+    .hero-title { font-size: 2.25rem; font-weight: 800; color: #18212f; margin-bottom: .25rem; letter-spacing: -.02em; }
+    .hero-sub { color: #4b5563; font-size: 1.08rem; margin-bottom: 1.35rem; }
+    .step { border-radius: 10px; padding: .9rem 1rem; background: #f8fafc; border: 1px solid #dfe5ec; text-align: center; min-height: 86px; }
+    .upload-box { border: 1.5px dashed #9aa7b5; border-radius: 12px; padding: 1.5rem; background: #f8fafc; }
+    .small-muted { color: #5f6b78; font-size: .92rem; }
+    .review-card { border: 1px solid #dfe5ec; border-radius: 12px; padding: 1rem 1.1rem; background: #ffffff; margin-bottom: .75rem; }
+    .review-title { font-size: 1.05rem; font-weight: 700; color: #1f2937; margin-bottom: .35rem; }
+    .review-meta { color: #4b5563; font-size: .95rem; line-height: 1.55; }
+    div[data-testid="stMetric"] { border: 1px solid #dfe5ec; padding: 14px; border-radius: 10px; background: #ffffff; }
+    p, li, label, .stCaption, [data-testid="stMarkdownContainer"] { color: #374151; }
+    [data-testid="stDataFrame"] { border: 1px solid #dfe5ec; border-radius: 10px; }
+    div.stButton > button[kind="primary"], div.stDownloadButton > button { font-weight: 700; min-height: 2.7rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -41,12 +41,24 @@ with st.sidebar:
     st.markdown("## ⚡ Pulsora")
     st.caption("AI Utility Invoice Extraction")
     st.divider()
-    st.radio(
-        "Navigation",
-        ["Invoice to CSV", "History", "Sample Invoices", "Settings"],
-        index=0,
-        label_visibility="collapsed",
+
+    st.markdown("### Invoice workflow")
+    st.markdown(
+        """
+        <div class="review-meta">
+        <b>1. Upload</b><br>
+        Add one or more utility invoice PDFs.<br><br>
+        <b>2. Extract</b><br>
+        AI identifies and structures invoice fields.<br><br>
+        <b>3. Review</b><br>
+        Validate the extracted data and confidence.<br><br>
+        <b>4. Export</b><br>
+        Download the consolidated CSV.
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
     st.divider()
     st.info(
         "Supports electricity, gas and water invoices across different layouts "
@@ -151,8 +163,13 @@ results = st.session_state.get("invoice_results", [])
 if results:
     st.divider()
     st.markdown("## Extraction Results")
+    st.caption(
+        f"{len(results)} invoice{'s' if len(results) != 1 else ''} processed. "
+        "Review the extracted values below before downloading the CSV."
+    )
 
     df = pd.DataFrame(results)
+
     display_cols = [
         "vendor_name", "invoice_date", "service_address", "utility_type",
         "usage_amount", "usage_unit", "billing_period_start",
@@ -160,59 +177,64 @@ if results:
     ]
     display_cols = [c for c in display_cols if c in df.columns]
 
-    left, right = st.columns([1.45, 1])
-    with left:
-        st.markdown("### Extracted Data")
-        shown = df[display_cols].copy()
-        shown.columns = [c.replace("_", " ").title() for c in shown.columns]
-        st.dataframe(shown, use_container_width=True, hide_index=True)
+    st.markdown("### Extracted Data")
+    shown = df[display_cols].copy()
+    shown.columns = [c.replace("_", " ").title() for c in shown.columns]
 
-        csv_df = df.drop(columns=["_warnings"], errors="ignore")
-        csv_bytes = csv_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "⬇ Download CSV",
-            data=csv_bytes,
-            file_name="pulsora_invoice_extraction.csv",
-            mime="text/csv",
-            type="primary",
-            use_container_width=True,
-        )
+    st.dataframe(
+        shown,
+        use_container_width=True,
+        hide_index=True,
+        height=min(520, max(180, 58 + (len(shown) * 55))),
+    )
 
-    with right:
-        st.markdown("### Review")
-        selected = st.selectbox(
-            "Invoice",
-            [r["_filename"] for r in results],
-            label_visibility="collapsed",
-        )
-        selected_result = next(r for r in results if r["_filename"] == selected)
+    st.markdown("### Review")
+    st.caption(
+        "Confidence and validation status for every processed invoice. "
+        "No invoice is selected by default."
+    )
 
-        confidence = selected_result.get("confidence")
-        if confidence is not None:
-            st.metric("Extraction confidence", f"{confidence:.0%}")
+    review_cols = st.columns(min(3, max(1, len(results))))
 
-        warnings = selected_result.get("_warnings", [])
-        if warnings:
-            st.warning("Validation warnings")
-            for w in warnings:
-                st.write(f"• {w}")
-        else:
-            st.success("Validation passed with no warnings.")
+    for idx, result in enumerate(results):
+        with review_cols[idx % len(review_cols)]:
+            filename = result.get("_filename", "Invoice")
+            confidence = result.get("confidence")
+            warnings = result.get("_warnings", [])
 
-        st.markdown("#### Field details")
-        for key, value in selected_result.items():
-            if key.startswith("_") or key == "confidence":
-                continue
-            st.write(f"**{key.replace('_', ' ').title()}**")
-            st.caption(str(value) if value is not None else "Not available")
+            confidence_text = (
+                f"{confidence:.0%}" if confidence is not None else "N/A"
+            )
+            status_text = "⚠️ Review warnings" if warnings else "✓ Validation passed"
 
-        # Preview the uploaded PDF when available
-        file_map = st.session_state.get("last_files", {})
-        if selected in file_map:
-            from src.extractor import render_first_page
-            try:
-                img = render_first_page(file_map[selected])
-                st.markdown("#### Invoice Preview")
-                st.image(img, use_container_width=True)
-            except Exception:
-                pass
+            review_html = f'''
+            <div class="review-card">
+                <div class="review-title">{filename}</div>
+                <div class="review-meta">
+                    <b>Confidence:</b> {confidence_text}<br>
+                    <b>Status:</b> {status_text}
+                </div>
+            </div>
+            '''
+
+            st.markdown(review_html, unsafe_allow_html=True)
+
+            if warnings:
+                for warning in warnings:
+                    st.warning(warning, icon="⚠️")
+            else:
+                st.success("Validation passed with no warnings.", icon="✓")
+
+    st.markdown("### Export")
+    csv_df = df.drop(columns=["_warnings"], errors="ignore")
+    csv_bytes = csv_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        "⬇ Download CSV",
+        data=csv_bytes,
+        file_name="pulsora_invoice_extraction.csv",
+        mime="text/csv",
+        type="primary",
+        use_container_width=True,
+    )
+
