@@ -64,13 +64,6 @@ IMPORTANT FIELD RULES
 - NEVER use No. of Days / Bill Days as usage.
 - NEVER use meter readings as usage.
 - NEVER use a rate, charge, amount due, tax, account number, or invoice number.
-- Usage must be a physical quantity of utility consumed, paired with a physical utility unit.
-- Currency is NEVER a valid usage unit. Reject €, $, £, ₹, INR, EUR, USD, GBP, and similar currency units.
-- A monetary statement such as "average daily cost" or "average daily consumption cost" is a cost, NOT utility usage.
-- NEVER use monetary cost/charge values merely because the surrounding label contains
-  "consumption", "consumo", "usage", or an equivalent word.
-- Do not use a percentage, temperature, number of days, tariff/rate, or other non-physical
-  measurement as usage.
 - If the invoice contains multiple separate consumption-period rows for the
   same invoice, identify ALL of those consumption values.
 - If there is an explicit total consumption value, prefer that total.
@@ -78,8 +71,6 @@ IMPORTANT FIELD RULES
   periods for the same invoice and have the same unit, SUM THEM.
 - Example: 20.316 SCM + 2.684 SCM = 23.000 SCM.
 - Do NOT sum meter readings or unrelated numeric fields.
-- If the only consumption-related number is monetary (for example 1.72 €), return
-  usage_amount=null and usage_unit=null rather than treating the monetary value as usage.
 
 3. BILLING PERIOD
 - Extract the service/usage period explicitly labelled From/To, Billing
@@ -114,11 +105,6 @@ Rules:
 - Due Date must never become invoice_date.
 - No. of Days / Bill Days must never become usage.
 - Meter readings must never become usage.
-- Usage must represent a physical utility quantity, not a monetary cost.
-- Currency units (€, $, £, ₹, INR, EUR, USD, GBP, etc.) are never valid usage units.
-- Reject statements such as "average daily cost" even when they contain the word
-  consumption/consumo; they describe money, not physical usage.
-- If the first pass selected a monetary value as usage, set usage_amount and usage_unit to null.
 - If multiple clearly additive consumption periods exist, sum them when there
   is no explicit total. For example, 20.316 SCM + 2.684 SCM = 23.000 SCM.
 - If there is an explicit total consumption, use the total instead of summing

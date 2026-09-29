@@ -1,29 +1,4 @@
-import re
-
 from .models import InvoiceData
-
-
-_CURRENCY_UNIT_RE = re.compile(
-    r"(?:€|\$|£|₹|₽|¥|₩|฿|₫|₴|₺|₪|₦|₱|₡|₲|₵|INR|USD|EUR|GBP|CAD|AUD|NZD|JPY|CNY|RMB|CHF|SEK|NOK|DKK|PLN|BRL|MXN|SGD|HKD)",
-    re.IGNORECASE,
-)
-
-_NON_PHYSICAL_UNIT_RE = re.compile(
-    r"(?:day|days|month|months|year|years|hour|hours|hr|hrs|%|percent|°[cf]|celsius|fahrenheit|temperature|account|invoice|rate|charge|cost|amount|tax)",
-    re.IGNORECASE,
-)
-
-
-def _is_currency_unit(unit: str | None) -> bool:
-    if not unit:
-        return False
-    return bool(_CURRENCY_UNIT_RE.search(unit.strip()))
-
-
-def _is_non_physical_unit(unit: str | None) -> bool:
-    if not unit:
-        return False
-    return bool(_NON_PHYSICAL_UNIT_RE.search(unit.strip()))
 
 
 def validate_invoice(data: InvoiceData):
@@ -35,22 +10,6 @@ def validate_invoice(data: InvoiceData):
     if data.invoice_date is None:
         warnings.append(
             "Invoice date could not be established from an explicit invoice/bill/issue date."
-        )
-
-    # Hard guardrail: usage must be a physical utility quantity, never money or
-    # another non-physical metric. If the model violates this, null the field
-    # rather than allowing a plausible-looking but incorrect CSV value through.
-    if data.usage_amount is not None and _is_currency_unit(data.usage_unit):
-        data.usage_amount = None
-        data.usage_unit = None
-        warnings.append(
-            "Usage value appeared to be a monetary amount rather than physical utility consumption; manual review required."
-        )
-    elif data.usage_amount is not None and _is_non_physical_unit(data.usage_unit):
-        data.usage_amount = None
-        data.usage_unit = None
-        warnings.append(
-            "Usage value used a non-physical unit and was excluded; manual review required."
         )
 
     if data.usage_amount is None:

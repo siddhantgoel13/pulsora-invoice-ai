@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from src.extractor import extract_text_and_pages, render_first_page
+from src.extractor import extract_text_and_pages
 from src.llm_parser import parse_invoice
 from src.models import InvoiceData
 from src.validator import validate_invoice
@@ -129,11 +129,11 @@ section[data-testid="stSidebar"] * {
 .hero {
     position: relative;
     overflow: hidden;
-    padding: 0.15rem 0 1.15rem;
+    padding: 0.45rem 0 1.15rem;
 }
 
 .hero-title {
-    font-size: clamp(2.25rem, 4vw, 3.45rem);
+    font-size: clamp(2.15rem, 3.6vw, 3.2rem);
     line-height: 1.04;
     font-weight: 850;
     letter-spacing: -0.045em;
@@ -382,7 +382,7 @@ with st.sidebar:
     st.markdown('<div class="sidebar-line"></div>', unsafe_allow_html=True)
 
     steps = [
-        ("01", "Upload", "Add one or more utility invoices."),
+        ("01", "Upload", "Add one or more utility invoice files."),
         ("02", "AI Extraction", "Identify and structure key invoice fields."),
         ("03", "Review", "Validate extracted data and confidence."),
         ("04", "Export", "Download the consolidated CSV."),
@@ -406,7 +406,7 @@ with st.sidebar:
         '''
         <div class="sidebar-support">
             ⚡ &nbsp; 🔥 &nbsp; 💧<br><br>
-            Supports <b>electricity, gas and water</b> invoices across different layouts and languages.
+            Supports <b>electricity, gas and water</b> invoices across different layouts and languages, including PDF and image files.
         </div>
         ''',
         unsafe_allow_html=True,
@@ -417,7 +417,7 @@ st.markdown(
     '''
     <div class="hero">
         <div class="hero-title">Utility Invoice Intelligence</div>
-        <div class="hero-sub">Upload utility invoices (PDF, JPG or PNG) and extract key details into a clean CSV with AI.</div>
+        <div class="hero-sub">Upload utility invoices (PDF, JPG, JPEG or PNG) and extract key details into a clean CSV with AI.</div>
         <div class="invoice-icons">⚡ &nbsp; 🔥 &nbsp; 💧</div>
     </div>
     ''',
@@ -427,7 +427,7 @@ st.markdown(
 # ---------- Three-step overview ----------
 c1, c2, c3 = st.columns(3)
 for col, num, title, copy in [
-    (c1, "01", "Upload Utility Invoices", "Add one or more PDF, JPG, JPEG or PNG utility invoices."),
+    (c1, "01", "Upload Invoice Files", "Add one or more utility invoices."),
     (c2, "02", "AI Extraction", "Identify and structure key invoice fields."),
     (c3, "03", "Review & Download", "Review results and export the consolidated CSV."),
 ]:
@@ -445,9 +445,9 @@ for col, num, title, copy in [
 
 # ---------- Upload ----------
 st.markdown('<div class="section-card">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Upload Utility Invoices</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Upload Invoice Files</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="section-copy">Drag & drop one or more invoice files here. PDF, JPG, JPEG or PNG • electricity, gas and water • multilingual invoices supported.</div>',
+    '<div class="section-copy">Drag & drop one or more invoice files here. PDF, JPG, JPEG and PNG supported • electricity, gas and water • multilingual invoices supported.</div>',
     unsafe_allow_html=True,
 )
 
@@ -455,7 +455,7 @@ uploaded = st.file_uploader(
     "Select invoice files",
     type=["pdf", "jpg", "jpeg", "png"],
     accept_multiple_files=True,
-    help="Select one or more utility invoices.",
+    help="Select one or more utility invoice files (PDF, JPG, JPEG or PNG).",
     label_visibility="collapsed",
 )
 st.markdown('</div>', unsafe_allow_html=True)
@@ -496,21 +496,14 @@ if process:
         with st.status(f"Processing {f.name}...", expanded=True) as status:
             try:
                 raw = f.read()
-                suffix = Path(f.name).suffix.lower().lstrip(".")
-                if suffix not in {"pdf", "jpg", "jpeg", "png"}:
-                    raise ValueError(f"Unsupported invoice file type: .{suffix or 'unknown'}")
-
-                if suffix == "pdf":
-                    st.write("Extracting PDF text and page images...")
-                else:
-                    st.write("Preparing invoice image for visual AI extraction...")
-
-                extracted = extract_text_and_pages(raw, file_type=suffix)
+                file_type = f.type or Path(f.name).suffix.lower()
+                st.write("Extracting invoice content...")
+                extracted = extract_text_and_pages(raw, file_type=file_type)
 
                 if extracted.text.strip():
-                    st.write("Selectable text detected — using text extraction plus visual validation.")
+                    st.write("Selectable text detected — using text extraction.")
                 else:
-                    st.write("No selectable text detected — using visual AI extraction.")
+                    st.write("Scanned/image-only invoice detected — using visual AI extraction.")
 
                 st.write("Sending structured extraction request to the LLM...")
                 data = parse_invoice(extracted.text, extracted.page_images)

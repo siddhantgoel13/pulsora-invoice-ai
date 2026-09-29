@@ -2,7 +2,7 @@ import io
 from dataclasses import dataclass
 
 import fitz
-from PIL import Image, ImageOps
+from PIL import Image
 
 
 @dataclass
@@ -12,13 +12,13 @@ class ExtractedPDF:
     page_images: list[bytes]
 
 
-def _image_to_jpeg(image_bytes: bytes) -> bytes:
-    """Normalize a JPG/PNG invoice image into JPEG bytes for the multimodal model."""
+def _normalise_image(image_bytes: bytes) -> bytes:
+    """Convert an uploaded raster image into JPEG bytes for the vision model."""
     with Image.open(io.BytesIO(image_bytes)) as image:
-        image = ImageOps.exif_transpose(image)
+        # Preserve the visible invoice while normalising formats such as PNG.
         if image.mode not in ("RGB", "L"):
             image = image.convert("RGB")
-        elif image.mode == "L":
+        else:
             image = image.convert("RGB")
 
         output = io.BytesIO()
@@ -26,28 +26,38 @@ def _image_to_jpeg(image_bytes: bytes) -> bytes:
         return output.getvalue()
 
 
-def extract_text_and_pages(file_bytes: bytes, file_type: str = "pdf") -> ExtractedPDF:
-    """
-    Extract invoice text and page images from a PDF or image document.
+def _is_image_type(file_type: str | None) -> bool:
+    if not file_type:
+        return False
+    value = file_type.lower().strip()
+    return value in {
+        "image/jpeg", "image/jpg", "image/png",
+        ".jpg", ".jpeg", ".png", "jpg", "jpeg", "png",
+    }
 
-    PDFs retain both selectable text and rendered page images. JPG/JPEG/PNG
-    documents have no text extraction step, so the normalized image is passed
-    directly to the visual extraction model.
-    """
-    file_type = (file_type or "pdf").lower().lstrip(".")
 
-    if file_type in {"jpg", "jpeg", "png"}:
-        jpeg_bytes = _image_to_jpeg(file_bytes)
+def extract_text_and_pages(document_bytes: bytes, file_type: str | None = None) -> ExtractedPDF:
+    """
+    Extract selectable text and rendered page images from an invoice.
+
+    PDF input keeps the existing PyMuPDF text + page-rendering pipeline.
+    JPG/JPEG/PNG input is normalised to one JPEG page image and sent to the
+    same multimodal parser. Image inputs have no selectable text, so ``text``
+    is intentionally empty and the vision model becomes the primary source.
+
+    ``file_type`` is optional for backwards compatibility, so existing calls
+    such as ``extract_text_and_pages(raw)`` continue to work.
+    """
+    if _is_image_type(file_type):
+        image_bytes = _normalise_image(document_bytes)
         return ExtractedPDF(
             text="",
             page_texts=[""],
-            page_images=[jpeg_bytes],
+            page_images=[image_bytes],
         )
 
-    if file_type != "pdf":
-        raise ValueError(f"Unsupported invoice document type: {file_type}")
-
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    # Default to PDF for backwards compatibility and the existing pipeline.
+    doc = fitz.open(stream=document_bytes, filetype="pdf")
     try:
         page_texts = [page.get_text("text") for page in doc]
         text = "\n\n--- PAGE BREAK ---\n\n".join(page_texts).strip()
@@ -66,24 +76,15 @@ def extract_text_and_pages(file_bytes: bytes, file_type: str = "pdf") -> Extract
         doc.close()
 
 
-def render_first_page(file_bytes: bytes, file_type: str = "pdf"):
-    """Return the first invoice page/image for the UI preview."""
-    file_type = (file_type or "pdf").lower().lstrip(".")
+def render_first_page(document_bytes: bytes, file_type: str | None = None):
+    """Render the first page/image for the Review section."""
+    if _is_image_type(file_type):
+        return Image.open(io.BytesIO(_normalise_image(document_bytes)))
 
-    if file_type in {"jpg", "jpeg", "png"}:
-        with Image.open(io.BytesIO(file_bytes)) as image:
-            image = ImageOps.exif_transpose(image)
-            return image.convert("RGB")
-
-    if file_type != "pdf":
-        raise ValueError(f"Unsupported invoice document type: {file_type}")
-
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    doc = fitz.open(stream=document_bytes, filetype="pdf")
     try:
-        if not doc.page_count:
-            raise ValueError("The PDF contains no pages.")
         page = doc[0]
         pix = page.get_pixmap(matrix=fitz.Matrix(1.4, 1.4), alpha=False)
-        return Image.open(io.BytesIO(pix.tobytes("png"))).copy()
+        return Image.open(io.BytesIO(pix.tobytes("png")))
     finally:
         doc.close()
