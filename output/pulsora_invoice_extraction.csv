@@ -1,0 +1,8 @@
+vendor_name,invoice_date,service_address,utility_type,usage_amount,usage_unit,billing_period_start,billing_period_end,confidence,_filename
+IBERDROLA,2014-09-18,"C/ Nombre Calle, 00, 00000 Población",electricity,,,2014-07-17,2014-09-17,0.95,Electricity Bill spanish.pdf
+INDRAPRASTHA GAS LIMITED,2018-09-24,"C10/89, 2ND FLOOR, BLOCK C 10, YAMUNA VIHAR, NEW DELHI 110053",gas,23.0,SCM,2018-07-13,2018-09-06,0.98,01_India_IGL_Gas_Invoice_1.pdf
+Indraprastha Gas Limited,2018-09-24,266 BLOCK C 4 YAMUNA VIHAR NEW DELHI 110053,gas,23.0,SCM,2018-07-11,2018-09-02,0.98,02_India_IGL_Gas_Invoice_2.pdf
+Magoffin County Water District,,,water,40.0,,2023-11-21,2023-12-19,0.95,03_USA_Magoffin_Water_Bill.pdf
+Kentucky Power Company,2024-11-14,7877,electricity,1221.0,kWh,2024-10-17,2024-11-14,0.98,04_USA_Kentucky_Power_Electricity_Bill.pdf
+EDF,2022-12-07,"4 RUE D AUTRICHE, 72100 LE MANS",electricity,2701.0,kWh,2022-04-07,2022-12-06,0.98,05_France_EDF_Electricity_Invoice.pdf
+Iberdrola,2014-09-18,"C/ Nombre Calle, 00, 00000 Población",electricity,,kWh,2014-07-17,2014-09-17,0.95,Electricity Bill spanish_page-0001.jpg
