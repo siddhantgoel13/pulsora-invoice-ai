@@ -48,7 +48,7 @@ def parse_invoice(text: str, page_images: list[bytes] | None = None) -> InvoiceD
             "OPENAI_API_KEY is not set. Add it to Streamlit Secrets before processing invoices."
         )
 
-    model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+    model = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
     client = OpenAI(api_key=api_key)
 
     # Normal PDFs: use the cheaper text extraction path.
@@ -91,7 +91,6 @@ def parse_invoice(text: str, page_images: list[bytes] | None = None) -> InvoiceD
 
     response = client.chat.completions.create(
         model=model,
-        temperature=0,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},

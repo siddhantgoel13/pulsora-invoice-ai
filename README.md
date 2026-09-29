@@ -68,3 +68,10 @@ pytest -q
 - Structured observability and cost/latency metrics
 - Human-review workflow for low-confidence fields
 - Larger evaluation dataset with expected ground truth
+
+
+## Model configuration
+
+The app defaults to `gpt-5.4-mini`. The code intentionally does not send a
+custom `temperature` parameter because GPT-5-family models require their
+supported/default sampling configuration.
